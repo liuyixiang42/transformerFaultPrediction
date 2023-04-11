@@ -35,7 +35,7 @@ def timestamp_encoding(data, max_sequence_length):
     return encoded_data
 
 
-def normalize(data):
+def normalize(data, feature_min = None, feature_max = None):
     """
     对数据进行归一化处理
     Args:
@@ -46,9 +46,10 @@ def normalize(data):
         feature_min: 每个特征的最小值，numpy array，形状为 [n_features]
         feature_max: 每个特征的最大值，numpy array，形状为 [n_features]
     """
-    feature_min = np.min(data, axis=0)
-    feature_max = np.max(data, axis=0)
-    normalized_data = (data - feature_min) / (feature_max - feature_min) + 1e-4
+    if feature_min is None:
+        feature_min = np.min(data, axis=0)
+        feature_max = np.max(data, axis=0)
+    normalized_data = (data - feature_min) / (feature_max - feature_min + 1e-4)
     return normalized_data, feature_min, feature_max
 
 
@@ -101,5 +102,14 @@ def impute_missing_values(x):
     x = x.detach().numpy()
 
     return x
+
+
+def convert_to_windows(data, model):
+	windows = []; w_size = model.n_window
+	for i, g in enumerate(data):
+		if i >= w_size: w = data[i-w_size:i]
+		else: w = torch.cat([data[0].repeat(w_size-i, 1), data[0:i]])
+		windows.append(w if 'TranAD' in args.model or 'Attention' in args.model else w.view(-1))
+	return torch.stack(windows)
 
 
