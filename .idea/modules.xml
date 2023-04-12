@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/transformerFaultPrediction.iml" filepath="$PROJECT_DIR$/.idea/transformerFaultPrediction.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/TranAD-main.iml" filepath="$PROJECT_DIR$/.idea/TranAD-main.iml" />
     </modules>
   </component>
 </project>

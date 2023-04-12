@@ -1,14 +1,17 @@
 from tqdm import tqdm
-from models import *
-from plotting import *
-from torch.utils.data import Dataset, DataLoader, TensorDataset
+from src.models import *
+from src.plotting import *
+from src.diagnosis import *
+from src.pot import *
+from src.utils import *
+from torch.utils.data import DataLoader, TensorDataset
 import torch.nn as nn
-import pandas as pd
 from time import time
 from pprint import pprint
-from pot import *
-from diagnosis import *
+from src.folderconstants import *
 
+
+# from beepy import beep
 
 def convert_to_windows(data, model):
     windows = []
@@ -28,20 +31,35 @@ def load_dataset(dataset):
         raise Exception('Processed Data not found.')
     loader = []
     for file in ['train', 'test', 'labels']:
+        if dataset == 'SMD': file = 'machine-1-1_' + file
         if dataset == 'SMAP': file = 'P-1_' + file
         if dataset == 'MSL': file = 'C-1_' + file
+        if dataset == 'UCR': file = '136_' + file
+        if dataset == 'NAB': file = 'ec2_request_latency_system_failure_' + file
         loader.append(np.load(os.path.join(folder, f'{file}.npy')))
-    if True:
-        loader[0] = cut_array(0.2, loader[0])
+    # loader = [i[:, debug:debug+1] for i in loader]
+    if args.less: loader[0] = cut_array(0.2, loader[0])
     train_loader = DataLoader(loader[0], batch_size=loader[0].shape[0])
     test_loader = DataLoader(loader[1], batch_size=loader[1].shape[0])
     labels = loader[2]
     return train_loader, test_loader, labels
 
 
+def save_model(model, optimizer, scheduler, epoch, accuracy_list):
+    folder = f'checkpoints/{args.model}_{args.dataset}/'
+    os.makedirs(folder, exist_ok=True)
+    file_path = f'{folder}/model.ckpt'
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict(),
+        'accuracy_list': accuracy_list}, file_path)
+
+
 def load_model(modelname, dims):
-    import models
-    model_class = getattr(models, modelname)
+    import src.models
+    model_class = getattr(src.models, modelname)
     model = model_class(dims).double()
     optimizer = torch.optim.AdamW(model.parameters(), lr=model.lr, weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 5, 0.9)
@@ -64,7 +82,107 @@ def load_model(modelname, dims):
 def backprop(epoch, model, data, dataO, optimizer, scheduler, training=True):
     l = nn.MSELoss(reduction='mean' if training else 'none')
     feats = dataO.shape[1]
-    if 'TranAD' in model.name:
+    if 'DAGMM' in model.name:
+        l = nn.MSELoss(reduction='none')
+        compute = ComputeLoss(model, 0.1, 0.005, 'cpu', model.n_gmm)
+        n = epoch + 1;
+        w_size = model.n_window
+        l1s = [];
+        l2s = []
+        if training:
+            for d in data:
+                _, x_hat, z, gamma = model(d)
+                l1, l2 = l(x_hat, d), l(gamma, d)
+                l1s.append(torch.mean(l1).item());
+                l2s.append(torch.mean(l2).item())
+                loss = torch.mean(l1) + torch.mean(l2)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+            scheduler.step()
+            tqdm.write(f'Epoch {epoch},\tL1 = {np.mean(l1s)},\tL2 = {np.mean(l2s)}')
+            return np.mean(l1s) + np.mean(l2s), optimizer.param_groups[0]['lr']
+        else:
+            ae1s = []
+            for d in data:
+                _, x_hat, _, _ = model(d)
+                ae1s.append(x_hat)
+            ae1s = torch.stack(ae1s)
+            y_pred = ae1s[:, data.shape[1] - feats:data.shape[1]].view(-1, feats)
+            loss = l(ae1s, data)[:, data.shape[1] - feats:data.shape[1]].view(-1, feats)
+            return loss.detach().numpy(), y_pred.detach().numpy()
+    if 'Attention' in model.name:
+        l = nn.MSELoss(reduction='none')
+        n = epoch + 1;
+        w_size = model.n_window
+        l1s = [];
+        res = []
+        if training:
+            for d in data:
+                ae, ats = model(d)
+                # res.append(torch.mean(ats, axis=0).view(-1))
+                l1 = l(ae, d)
+                l1s.append(torch.mean(l1).item())
+                loss = torch.mean(l1)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+            # res = torch.stack(res); np.save('ascores.npy', res.detach().numpy())
+            scheduler.step()
+            tqdm.write(f'Epoch {epoch},\tL1 = {np.mean(l1s)}')
+            return np.mean(l1s), optimizer.param_groups[0]['lr']
+        else:
+            ae1s, y_pred = [], []
+            for d in data:
+                ae1 = model(d)
+                y_pred.append(ae1[-1])
+                ae1s.append(ae1)
+            ae1s, y_pred = torch.stack(ae1s), torch.stack(y_pred)
+            loss = torch.mean(l(ae1s, data), axis=1)
+            return loss.detach().numpy(), y_pred.detach().numpy()
+    elif 'MAD_GAN' in model.name:
+        l = nn.MSELoss(reduction='none')
+        bcel = nn.BCELoss(reduction='mean')
+        msel = nn.MSELoss(reduction='mean')
+        real_label, fake_label = torch.tensor([0.9]), torch.tensor([0.1])  # label smoothing
+        real_label, fake_label = real_label.type(torch.DoubleTensor), fake_label.type(torch.DoubleTensor)
+        n = epoch + 1;
+        w_size = model.n_window
+        mses, gls, dls = [], [], []
+        if training:
+            for d in data:
+                # training discriminator
+                model.discriminator.zero_grad()
+                _, real, fake = model(d)
+                dl = bcel(real, real_label) + bcel(fake, fake_label)
+                dl.backward()
+                model.generator.zero_grad()
+                optimizer.step()
+                # training generator
+                z, _, fake = model(d)
+                mse = msel(z, d)
+                gl = bcel(fake, real_label)
+                tl = gl + mse
+                tl.backward()
+                model.discriminator.zero_grad()
+                optimizer.step()
+                mses.append(mse.item());
+                gls.append(gl.item());
+                dls.append(dl.item())
+            # tqdm.write(f'Epoch {epoch},\tMSE = {mse},\tG = {gl},\tD = {dl}')
+            tqdm.write(f'Epoch {epoch},\tMSE = {np.mean(mses)},\tG = {np.mean(gls)},\tD = {np.mean(dls)}')
+            return np.mean(gls) + np.mean(dls), optimizer.param_groups[0]['lr']
+        else:
+            outputs = []
+            for d in data:
+                z, _, _ = model(d)
+                outputs.append(z)
+            outputs = torch.stack(outputs)
+            y_pred = outputs[:, data.shape[1] - feats:data.shape[1]].view(-1, feats)
+            loss = l(outputs, data)
+            loss = loss[:, data.shape[1] - feats:data.shape[1]].view(-1, feats)
+            return loss.detach().numpy(), y_pred.detach().numpy()
+    elif 'TranAD' in model.name:
         l = nn.MSELoss(reduction='none')
         data_x = torch.DoubleTensor(data);
         dataset = TensorDataset(data_x, data_x)
@@ -111,26 +229,19 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training=True):
             return loss.detach().numpy(), y_pred.detach().numpy()
 
 
-def save_model(model, optimizer, scheduler, epoch, accuracy_list):
-    folder = f'checkpoints/{args.model}_{args.dataset}/'
-    os.makedirs(folder, exist_ok=True)
-    file_path = f'{folder}/model.ckpt'
-    torch.save({
-        'epoch': epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'scheduler_state_dict': scheduler.state_dict(),
-        'accuracy_list': accuracy_list}, file_path)
-
-
-
 if __name__ == '__main__':
     train_loader, test_loader, labels = load_dataset(args.dataset)
+    if args.model in ['MERLIN']:
+        eval(f'run_{args.model.lower()}(test_loader, labels, args.dataset)')
     model, optimizer, scheduler, epoch, accuracy_list = load_model(args.model, labels.shape[1])
+
     ## Prepare data
     trainD, testD = next(iter(train_loader)), next(iter(test_loader))
     trainO, testO = trainD, testD
-    trainD, testD = convert_to_windows(trainD, model), convert_to_windows(testD, model)
+    if model.name in ['Attention', 'DAGMM', 'USAD', 'MSCRED', 'CAE_M', 'GDN', 'MTAD_GAT',
+                      'MAD_GAN'] or 'TranAD' in model.name:
+        trainD, testD = convert_to_windows(trainD, model), convert_to_windows(testD, model)
+
     ### Training phase
     if not args.test:
         print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
@@ -169,6 +280,7 @@ if __name__ == '__main__':
     labelsFinal = (np.sum(labels, axis=1) >= 1) + 0
     result, _ = pot_eval(lossTfinal, lossFinal, labelsFinal)
     result.update(hit_att(loss, labels))
-    result.update(ndcg(loss, labels))
     print(df)
     pprint(result)
+# pprint(getresults2(df, result))
+# beep(4)
