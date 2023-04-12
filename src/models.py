@@ -5,6 +5,7 @@ from src.constants import *
 
 torch.manual_seed(1)
 
+
 ## Separate LSTM for each variable
 class LSTM_Univariate(nn.Module):
 	def __init__(self, feats):
@@ -16,8 +17,8 @@ class LSTM_Univariate(nn.Module):
 		self.lstm = nn.ModuleList([nn.LSTM(1, self.n_hidden) for i in range(feats)])
 
 	def forward(self, x):
-		hidden = [(torch.rand(1, 1, self.n_hidden, dtype=torch.float64), 
-			torch.randn(1, 1, self.n_hidden, dtype=torch.float64)) for i in range(self.n_feats)]
+		hidden = [(torch.rand(1, 1, self.n_hidden, dtype=torch.float64),
+				   torch.randn(1, 1, self.n_hidden, dtype=torch.float64)) for i in range(self.n_feats)]
 		outputs = []
 		for i, g in enumerate(x):
 			multivariate_output = []
@@ -29,6 +30,7 @@ class LSTM_Univariate(nn.Module):
 			outputs.append(output)
 		return torch.stack(outputs)
 
+
 ## Simple Multi-Head Self-Attention Model
 class Attention(nn.Module):
 	def __init__(self, feats):
@@ -36,17 +38,18 @@ class Attention(nn.Module):
 		self.name = 'Attention'
 		self.lr = 0.0001
 		self.n_feats = feats
-		self.n_window = 5 # MHA w_size = 5
+		self.n_window = 5  # MHA w_size = 5
 		self.n = self.n_feats * self.n_window
-		self.atts = [ nn.Sequential( nn.Linear(self.n, feats * feats), 
-				nn.ReLU(True))	for i in range(1)]
+		self.atts = [nn.Sequential(nn.Linear(self.n, feats * feats),
+								   nn.ReLU(True)) for i in range(1)]
 		self.atts = nn.ModuleList(self.atts)
 
 	def forward(self, g):
 		for at in self.atts:
 			ats = at(g.view(-1)).reshape(self.n_feats, self.n_feats)
-			g = torch.matmul(g, ats)		
+			g = torch.matmul(g, ats)
 		return g, ats
+
 
 ## LSTM_AD Model
 class LSTM_AD(nn.Module):
@@ -61,8 +64,10 @@ class LSTM_AD(nn.Module):
 		self.fcn = nn.Sequential(nn.Linear(self.n_feats, self.n_feats), nn.Sigmoid())
 
 	def forward(self, x):
-		hidden = (torch.rand(1, 1, self.n_hidden, dtype=torch.float64), torch.randn(1, 1, self.n_hidden, dtype=torch.float64))
-		hidden2 = (torch.rand(1, 1, self.n_feats, dtype=torch.float64), torch.randn(1, 1, self.n_feats, dtype=torch.float64))
+		hidden = (
+		torch.rand(1, 1, self.n_hidden, dtype=torch.float64), torch.randn(1, 1, self.n_hidden, dtype=torch.float64))
+		hidden2 = (
+		torch.rand(1, 1, self.n_feats, dtype=torch.float64), torch.randn(1, 1, self.n_feats, dtype=torch.float64))
 		outputs = []
 		for i, g in enumerate(x):
 			out, hidden = self.lstm(g.view(1, 1, -1), hidden)
@@ -70,6 +75,7 @@ class LSTM_AD(nn.Module):
 			out = self.fcn(out.view(-1))
 			outputs.append(2 * out.view(-1))
 		return torch.stack(outputs)
+
 
 ## DAGMM Model (ICLR 18)
 class DAGMM(nn.Module):
@@ -81,7 +87,7 @@ class DAGMM(nn.Module):
 		self.n_feats = feats
 		self.n_hidden = 16
 		self.n_latent = 8
-		self.n_window = 5 # DAGMM w_size = 5
+		self.n_window = 5  # DAGMM w_size = 5
 		self.n = self.n_feats * self.n_window
 		self.n_gmm = self.n_feats * self.n_window
 		self.encoder = nn.Sequential(
@@ -95,12 +101,12 @@ class DAGMM(nn.Module):
 			nn.Linear(self.n_hidden, self.n), nn.Sigmoid(),
 		)
 		self.estimate = nn.Sequential(
-			nn.Linear(self.n_latent+2, self.n_hidden), nn.Tanh(), nn.Dropout(0.5),
+			nn.Linear(self.n_latent + 2, self.n_hidden), nn.Tanh(), nn.Dropout(0.5),
 			nn.Linear(self.n_hidden, self.n_gmm), nn.Softmax(dim=1),
 		)
 
 	def compute_reconstruction(self, x, x_hat):
-		relative_euclidean_distance = (x-x_hat).norm(2, dim=1) / x.norm(2, dim=1)
+		relative_euclidean_distance = (x - x_hat).norm(2, dim=1) / x.norm(2, dim=1)
 		cosine_similarity = F.cosine_similarity(x, x_hat, dim=1)
 		return relative_euclidean_distance, cosine_similarity
 
@@ -125,7 +131,7 @@ class MAD_GAN(nn.Module):
 		self.lr = 0.0001
 		self.n_feats = feats
 		self.n_hidden = 16
-		self.n_window = 5 # MAD_GAN w_size = 5
+		self.n_window = 5  # MAD_GAN w_size = 5
 		self.n = self.n_feats * self.n_window
 		self.generator = nn.Sequential(
 			nn.Flatten(),
@@ -142,17 +148,19 @@ class MAD_GAN(nn.Module):
 
 	def forward(self, g):
 		## Generate
-		z = self.generator(g.view(1,-1))
+		z = self.generator(g.view(1, -1))
 		## Discriminator
-		real_score = self.discriminator(g.view(1,-1))
-		fake_score = self.discriminator(z.view(1,-1))
+		real_score = self.discriminator(g.view(1, -1))
+		fake_score = self.discriminator(z.view(1, -1))
 		return z.view(-1), real_score.view(-1), fake_score.view(-1)
 
+
 # Proposed Model (VLDB 22)
-class TranAD_Basic(nn.Module):
+# 少了encode函数，直接将src输入到变换器编码器中，生成memory。然后将tgt和memory输入到变换器解码器中，经过全连接层得到x。最后通过Sigmoid函数对x进行激活，并将其作为输出返回。
+class Transformer_Basic(nn.Module):
 	def __init__(self, feats):
-		super(TranAD_Basic, self).__init__()
-		self.name = 'TranAD_Basic'
+		super(Transformer_Basic, self).__init__()
+		self.name = 'Transformer_Basic'
 		self.lr = lr
 		self.batch = 128
 		self.n_feats = feats
@@ -173,11 +181,14 @@ class TranAD_Basic(nn.Module):
 		x = self.fcn(x)
 		return x
 
+
 # Proposed Model (FCN) + Self Conditioning + Adversarial + MAML (VLDB 22)
-class TranAD_Transformer(nn.Module):
+# 没有使用TransformerEncoder和TransformerDecoder层，而是使用了两个全连接网络来分别实现编码和解码，同时也没有使用PositionalEncoding层。
+# 它的输入和输出也是三维张量，但在编码过程中，输入先被压缩成二维张量，经过全连接网络编码后再解压成三维张量。
+class Transformer_Transformer(nn.Module):
 	def __init__(self, feats):
-		super(TranAD_Transformer, self).__init__()
-		self.name = 'TranAD_Transformer'
+		super(Transformer_Transformer, self).__init__()
+		self.name = 'Transformer_Transformer'
 		self.lr = lr
 		self.batch = 128
 		self.n_feats = feats
@@ -205,20 +216,25 @@ class TranAD_Transformer(nn.Module):
 		# Phase 1 - Without anomaly scores
 		c = torch.zeros_like(src)
 		x1 = self.transformer_decoder1(self.encode(src, c, tgt))
-		x1 = x1.reshape(-1, 1, 2*self.n_feats).permute(1, 0, 2)
+		x1 = x1.reshape(-1, 1, 2 * self.n_feats).permute(1, 0, 2)
 		x1 = self.fcn(x1)
 		# Phase 2 - With anomaly scores
 		c = (x1 - src) ** 2
 		x2 = self.transformer_decoder2(self.encode(src, c, tgt))
-		x2 = x2.reshape(-1, 1, 2*self.n_feats).permute(1, 0, 2)
+		x2 = x2.reshape(-1, 1, 2 * self.n_feats).permute(1, 0, 2)
 		x2 = self.fcn(x2)
 		return x1, x2
 
+
 # Proposed Model + Self Conditioning + MAML (VLDB 22)
-class TranAD_Adversarial(nn.Module):
+# 对抗训练的思想
+# c 参数被设置为 x - src 的平方，其中 x 是在第一阶段（Without anomaly scores）生成的输出结果，而 src 是输入数据。
+# 这个 c 参数可以被看作是对输入数据的扰动，用于增加模型对抗攻击的鲁棒性，从而使模型更能够抵御对抗攻击。
+# 在第二阶段（With anomaly scores）中，模型使用带有扰动的输入数据 src + c 来生成输出结果，从而使模型更加鲁棒。
+class Transformer_Adversarial(nn.Module):
 	def __init__(self, feats):
-		super(TranAD_Adversarial, self).__init__()
-		self.name = 'TranAD_Adversarial'
+		super(Transformer_Adversarial, self).__init__()
+		self.name = 'Transformer_Adversarial'
 		self.lr = lr
 		self.batch = 128
 		self.n_feats = feats
@@ -250,11 +266,16 @@ class TranAD_Adversarial(nn.Module):
 		x = self.encode_decode(src, c, tgt)
 		return x
 
+
 # Proposed Model + Adversarial + MAML (VLDB 22)
-class TranAD_SelfConditioning(nn.Module):
+# 通过在第二个解码器输入中加入先前解码器的输出，并将其用于计算注意力权重。
+# 第二个解码器输入的c被定义为x1 - src的平方，其中x1是第一个解码器的输出，src是原始的输入。
+# 这个c就是表示当前时刻的输入与前一时刻的解码器输出之间的残差，即用于自适应调节注意力的“自我调节”因素，也称为自调节机制。
+# 这种机制允许模型动态地调整自身的注意力和输出，以更好地适应当前输入，从而提高模型的鲁棒性和性能。
+class Transformer_SelfConditioning(nn.Module):
 	def __init__(self, feats):
-		super(TranAD_SelfConditioning, self).__init__()
-		self.name = 'TranAD_SelfConditioning'
+		super(Transformer_SelfConditioning, self).__init__()
+		self.name = 'Transformer_SelfConditioning'
 		self.lr = lr
 		self.batch = 128
 		self.n_feats = feats
@@ -285,15 +306,17 @@ class TranAD_SelfConditioning(nn.Module):
 		x2 = self.fcn(self.transformer_decoder2(*self.encode(src, c, tgt)))
 		return x1, x2
 
+
 # Proposed Model + Self Conditioning + Adversarial + MAML (VLDB 22)
-class TranAD(nn.Module):
+# 模型层包括pos_encoder（位置编码器）、transformer_encoder（变换器编码器）、transformer_decoder1（变换器解码器1）、transformer_decoder2（变换器解码器2）和fcn（全连接网络）
+class Transformer(nn.Module):
 	def __init__(self, feats):
-		super(TranAD, self).__init__()
-		self.name = 'TranAD'
-		self.lr = lr
+		super(Transformer, self).__init__()
+		self.name = 'Transformer'
+		self.lr = lr  # 学习率
 		self.batch = 128
-		self.n_feats = feats
-		self.n_window = 10
+		self.n_feats = feats  # 特征数
+		self.n_window = 10  # 滑动窗口
 		self.n = self.n_feats * self.n_window
 		self.pos_encoder = PositionalEncoding(2 * feats, 0.1, self.n_window)
 		encoder_layers = TransformerEncoderLayer(d_model=2 * feats, nhead=feats, dim_feedforward=16, dropout=0.1)
@@ -304,6 +327,7 @@ class TranAD(nn.Module):
 		self.transformer_decoder2 = TransformerDecoder(decoder_layers2, 1)
 		self.fcn = nn.Sequential(nn.Linear(2 * feats, feats), nn.Sigmoid())
 
+	# encode函数将输入src和控制信号c拼接在一起，并进行位置编码。然后将编码后的src输入到变换器编码器中，生成memory。最后将tgt重复两次，并返回tgt和memory。
 	def encode(self, src, c, tgt):
 		src = torch.cat((src, c), dim=2)
 		src = src * math.sqrt(self.n_feats)
@@ -312,6 +336,8 @@ class TranAD(nn.Module):
 		tgt = tgt.repeat(1, 1, 2)
 		return tgt, memory
 
+	# forward函数是前向传播函数，接收src和tgt作为输入。
+	# 首先将控制信号c初始化为与src相同的形状，并将src和c一起输入到变换器解码器1中，经过全连接层得到x1。然后将控制信号更新为(x1 - src)的平方，并将其与src一起输入到变换器解码器2中，再次经过全连接层得到x2。最后返回x1和x2。
 	def forward(self, src, tgt):
 		# Phase 1 - Without anomaly scores
 		c = torch.zeros_like(src)

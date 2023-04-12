@@ -11,12 +11,12 @@ datasets = ['synthetic', 'SMD', 'SWaT', 'SMAP', 'MSL', 'WADI', 'MSDS', 'UCR', 'M
 wadi_drop = ['2_LS_001_AL', '2_LS_002_AL','2_P_001_STATUS','2_P_002_STATUS']
 
 def load_and_save(category, filename, dataset, dataset_folder):
-    temp = np.genfromtxt(os.path.join(dataset_folder, category, filename),
-                         dtype=np.float64,
-                         delimiter=',')
-    print(dataset, category, filename, temp.shape)
-    np.save(os.path.join(output_folder, f"SMD/{dataset}_{category}.npy"), temp)
-    return temp.shape
+	temp = np.genfromtxt(os.path.join(dataset_folder, category, filename),
+						 dtype=np.float64,
+						 delimiter=',')
+	print(dataset, category, filename, temp.shape)
+	np.save(os.path.join(output_folder, f"SMD/{dataset}_{category}.npy"), temp)
+	return temp.shape
 
 def load_and_save2(category, filename, dataset, dataset_folder, shape):
 	temp = np.zeros(shape)
