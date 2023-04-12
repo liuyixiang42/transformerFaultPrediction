@@ -3,7 +3,7 @@ import sys
 import pandas as pd
 import numpy as np
 import json
-from src.folderconstants import *
+from src.constants import *
 
 
 datasets = ['synthetic', 'SMD', 'SWaT', 'SMAP', 'MSL', 'WADI', 'MSDS', 'UCR', 'MBA', 'NAB']

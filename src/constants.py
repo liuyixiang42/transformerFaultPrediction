@@ -1,5 +1,8 @@
 from src.parser import *
 
+output_folder = 'processed'
+data_folder = 'data'
+
 # Threshold parameters
 lm_d = {
 		'SMD': [(0.99995, 1.04), (0.99995, 1.06)],

@@ -8,10 +8,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import torch.nn as nn
 from time import time
 from pprint import pprint
-from src.folderconstants import *
 
-
-# from beepy import beep
 
 def convert_to_windows(data, model):
     windows = []
