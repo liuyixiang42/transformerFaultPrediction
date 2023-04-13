@@ -18,7 +18,7 @@ def convert_to_windows(data, model):
             w = data[i - w_size:i]
         else:
             w = torch.cat([data[0].repeat(w_size - i, 1), data[0:i]])
-        windows.append(w if 'TranAD' in args.model or 'Attention' in args.model else w.view(-1))
+        windows.append(w if 'Transformer' in args.model or 'Attention' in args.model else w.view(-1))
     return torch.stack(windows)
 
 
@@ -179,7 +179,7 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training=True):
             loss = l(outputs, data)
             loss = loss[:, data.shape[1] - feats:data.shape[1]].view(-1, feats)
             return loss.detach().numpy(), y_pred.detach().numpy()
-    elif 'TranAD' in model.name:
+    elif 'Transformer' in model.name:
         l = nn.MSELoss(reduction='none')
         data_x = torch.DoubleTensor(data);
         dataset = TensorDataset(data_x, data_x)
@@ -236,7 +236,7 @@ if __name__ == '__main__':
     trainD, testD = next(iter(train_loader)), next(iter(test_loader))
     trainO, testO = trainD, testD
     if model.name in ['Attention', 'DAGMM', 'USAD', 'MSCRED', 'CAE_M', 'GDN', 'MTAD_GAT',
-                      'MAD_GAN'] or 'TranAD' in model.name:
+                      'MAD_GAN'] or 'Transformer' in model.name:
         trainD, testD = convert_to_windows(trainD, model), convert_to_windows(testD, model)
 
     ### Training phase
@@ -260,7 +260,7 @@ if __name__ == '__main__':
 
     ### Plot curves
     if not args.test:
-        if 'TranAD' in model.name: testO = torch.roll(testO, 1, 0)
+        if 'Transformer' in model.name: testO = torch.roll(testO, 1, 0)
         plotter(f'{args.model}_{args.dataset}', testO, y_pred, loss, labels)
 
     ### Scores
