@@ -110,9 +110,9 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training=True):
             return loss.detach().numpy(), y_pred.detach().numpy()
     if 'Attention' in model.name:
         l = nn.MSELoss(reduction='none')
-        n = epoch + 1;
+        n = epoch + 1
         w_size = model.n_window
-        l1s = [];
+        l1s = []
         res = []
         if training:
             for d in data:
@@ -143,7 +143,7 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training=True):
         msel = nn.MSELoss(reduction='mean')
         real_label, fake_label = torch.tensor([0.9]), torch.tensor([0.1])  # label smoothing
         real_label, fake_label = real_label.type(torch.DoubleTensor), fake_label.type(torch.DoubleTensor)
-        n = epoch + 1;
+        n = epoch + 1
         w_size = model.n_window
         mses, gls, dls = [], [], []
         if training:
@@ -242,8 +242,8 @@ if __name__ == '__main__':
     ### Training phase
     if not args.test:
         print(f'{color.HEADER}Training {args.model} on {args.dataset}{color.ENDC}')
-        num_epochs = 5;
-        e = epoch + 1;
+        num_epochs = 5
+        e = epoch + 1
         start = time()
         for e in tqdm(list(range(epoch + 1, epoch + num_epochs + 1))):
             lossT, lr = backprop(e, model, trainD, trainO, optimizer, scheduler)

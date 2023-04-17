@@ -3,11 +3,12 @@ import sys
 import pandas as pd
 import numpy as np
 import json
-from src.constants import *
+
+
+output_folder = 'processed'
+data_folder = 'data'
 
 datasets = ['synthetic', 'SMD', 'SWaT', 'SMAP', 'MSL', 'WADI', 'MSDS', 'UCR', 'MBA', 'NAB']
-
-wadi_drop = ['2_LS_001_AL', '2_LS_002_AL', '2_P_001_STATUS', '2_P_002_STATUS']
 
 
 def load_and_save(category, filename, dataset, dataset_folder):
@@ -33,11 +34,12 @@ def load_and_save2(category, filename, dataset, dataset_folder, shape):
 
 def normalize(a):
     a = a / np.maximum(np.absolute(a.max(axis=0)), np.absolute(a.min(axis=0)))
-    return (a / 2 + 0.5)
+    return a / 2 + 0.5
 
 
 def normalize2(a, min_a=None, max_a=None):
-    if min_a is None: min_a, max_a = min(a), max(a)
+    if min_a is None:
+        min_a, max_a = min(a), max(a)
     return (a - min_a) / (max_a - min_a), min_a, max_a
 
 
@@ -46,7 +48,7 @@ def normalize3(a, min_a=None, max_a=None):
     return (a - min_a) / (max_a - min_a + 0.0001), min_a, max_a
 
 
-def convertNumpy(df):
+def normalize4(df):
     x = df[df.columns[3:]].values[::10, :]
     return (x - x.min(0)) / (x.ptp(0) + 1e-4)
 
@@ -186,7 +188,7 @@ def load_data(dataset):
                         break
             st, et = str(row['Start Time']), str(row['End Time'])
             labels.loc[(labels['Time'] >= st) & (labels['Time'] <= et), matched] = 1
-        train, test, labels = convertNumpy(train), convertNumpy(test), convertNumpy(labels)
+        train, test, labels = normalize4(train), normalize4(test), normalize4(labels)
         print(train.shape, test.shape, labels.shape)
         for file in ['train', 'test', 'labels']:
             np.save(os.path.join(folder, f'{file}.npy'), eval(file))
