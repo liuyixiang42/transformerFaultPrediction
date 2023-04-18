@@ -4,6 +4,186 @@ from torch.autograd import Variable
 import math
 import numpy as np
 
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.nn.modules.normalization import LayerNorm
+
+
+class LayerDrop(nn.Module):
+    def __init__(self, drop_prob=0.1):
+        super(LayerDrop, self).__init__()
+        self.drop_prob = drop_prob
+
+    def forward(self, x, residual_fn):
+        if not self.training or torch.rand(1) > self.drop_prob:
+            return residual_fn(x)
+        else:
+            return x
+class TransformerEncoderLayer2(nn.Module):
+    def __init__(self, d_model, nhead, dim_feedforward=16, dropout=0.1, layerdrop=0.1):
+        super(TransformerEncoderLayer2, self).__init__()
+        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
+        self.self_attn_drop = LayerDrop(layerdrop)
+        self.linear1 = nn.Linear(d_model, dim_feedforward)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(dim_feedforward, d_model)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        self.linear_drop = LayerDrop(layerdrop)
+
+        self.activation = nn.GELU()
+
+    def forward(self, src, src_mask=None, src_key_padding_mask=None):
+        src2 = self.self_attn(src, src, src, attn_mask=src_mask, key_padding_mask=src_key_padding_mask)[0]
+        src = self.self_attn_drop(src2, lambda x: src + x)
+        src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
+        src = self.linear_drop(src2, lambda x: src + x)
+        return src
+
+class DropoutLayer(nn.Module):
+    def __init__(self, p):
+        super(DropoutLayer, self).__init__()
+        self.dropout = nn.Dropout(p)
+
+    def forward(self, x):
+        return x * self.dropout(x)
+
+class TransformerDecoderLayer2(nn.Module):
+    def __init__(self, d_model, nhead, dim_feedforward=16, dropout=0.1):
+        super(TransformerDecoderLayer2, self).__init__()
+
+        # 增加层数
+        self.self_attn_layers = nn.ModuleList([
+            nn.MultiheadAttention(d_model, nhead, dropout=dropout) for _ in range(3)
+        ])
+        self.multihead_attn_layers = nn.ModuleList([
+            nn.MultiheadAttention(d_model, nhead, dropout=dropout) for _ in range(3)
+        ])
+        self.linear_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(d_model, dim_feedforward),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(dim_feedforward, d_model),
+                nn.Dropout(dropout),
+            ) for _ in range(3)
+        ])
+
+        # Layer Normalization
+        self.self_attn_norm = nn.ModuleList([LayerNorm(d_model) for _ in range(3)])
+        self.multihead_attn_norm = nn.ModuleList([LayerNorm(d_model) for _ in range(3)])
+        self.linear_norm = nn.ModuleList([LayerNorm(d_model) for _ in range(3)])
+
+        # LayerDrop
+        self.self_attn_drop = nn.ModuleList([
+            DropoutLayer(dropout) for _ in range(3)
+        ])
+        self.multihead_attn_drop = nn.ModuleList([
+            DropoutLayer(dropout) for _ in range(3)
+        ])
+        self.linear_drop = nn.ModuleList([
+            DropoutLayer(dropout) for _ in range(3)
+        ])
+
+    def forward(self, tgt, memory, tgt_mask=None, memory_mask=None, tgt_key_padding_mask=None,
+                memory_key_padding_mask=None):
+        # Self-attention layer
+        attn_tgt = tgt
+        for i in range(3):
+            attn_tgt2 = self.self_attn_layers[i](attn_tgt, attn_tgt, attn_tgt, attn_mask=tgt_mask)[0]
+            attn_tgt = attn_tgt + self.self_attn_drop[i](attn_tgt2)
+            attn_tgt = self.self_attn_norm[i](attn_tgt)
+
+        # Multi-head attention layer
+        attn_mem = memory
+        for i in range(3):
+            attn_tgt2 = self.multihead_attn_layers[i](attn_tgt, attn_mem, attn_mem, key_padding_mask=memory_key_padding_mask)[0]
+            attn_tgt = attn_tgt + self.multihead_attn_drop[i](attn_tgt2)
+            attn_tgt = self.multihead_attn_norm[i](attn_tgt)
+
+        # Feedforward layer
+        ff_tgt = attn_tgt
+        for i in range(3):
+            ff_tgt2 = self.linear_layers[i](ff_tgt)
+            ff_tgt = ff_tgt + self.linear_drop[i](ff_tgt2)
+            ff_tgt = self.linear_norm[i](ff_tgt)
+
+        return ff_tgt
+
+
+class PositionalEncoding2(nn.Module):
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super(PositionalEncoding2, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        self.max_len = max_len
+        self.d_model = d_model
+
+        # Learnable parameters for generating position encoding
+        self.alpha = nn.Parameter(torch.randn(1, 1, d_model))
+        self.beta = nn.Parameter(torch.randn(1, 1, d_model))
+
+        # Adaptive learning rate scheduler for alpha and beta
+        self.lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer=torch.optim.Adam([self.alpha, self.beta], lr=1e-3),
+            mode='min',
+            factor=0.5,
+            patience=2,
+            threshold=0.01,
+            verbose=True,
+        )
+
+    def generate_positional_encoding(self, pos):
+        """
+        Generate positional encoding given a sequence position.
+        """
+        freq_divider = torch.exp(torch.arange(0, self.d_model, 2).float() * (-math.log(10000.0) / self.d_model))
+        pos = torch.tensor([pos]).float()
+        sin_part = torch.sin(pos * freq_divider)
+        cos_part = torch.cos(pos * freq_divider)
+        encoding = torch.zeros(pos.size(0), self.d_model, device=pos.device)
+        encoding[:, 0::2] = sin_part
+        encoding[:, 1::2] = cos_part
+        encoding = encoding.unsqueeze(0)
+        return encoding
+
+    def forward(self, x, pos=0):
+        # Calculate learnable parameters for position encoding
+        alpha = self.alpha.repeat(x.size(0), 1, 1)
+        beta = self.beta.repeat(x.size(0), 1, 1)
+
+        # Generate position encoding
+        pos_encoding = alpha * self.generate_positional_encoding(pos) + beta
+
+        # Pad position encoding if sequence length is less than max_len
+        if x.size(0) < self.max_len:
+            pad_len = self.max_len - x.size(0)
+            pad_encoding = torch.zeros(pad_len, self.d_model, device=x.device)
+            pos_encoding = torch.cat((pos_encoding, pad_encoding), dim=0)
+
+        # Add position encoding to input tensor
+        x = x + pos_encoding[:x.size(0), :, :]
+
+        # Update learning rate for alpha and beta
+        self.lr_scheduler.step(alpha.abs().mean())
+
+        return self.dropout(x)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # 位置编码（Positional Encoding）类。它的作用是为输入的序列添加位置信息，以便在Transformer等模型中更好地处理序列信息。
 #

@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import torch.nn as nn
 from time import time
 from pprint import pprint
+from generator import *
 
 
 def convert_to_windows(data, model):
@@ -18,7 +19,7 @@ def convert_to_windows(data, model):
             w = data[i - w_size:i]
         else:
             w = torch.cat([data[0].repeat(w_size - i, 1), data[0:i]])
-        windows.append(w if 'Transformer' in args.model or 'Attention' in args.model else w.view(-1))
+        windows.append(w if 'Transformer' in args.model or 'Attention' in args.model or 'TranAD' in args.model else w.view(-1))
     return torch.stack(windows)
 
 
@@ -179,7 +180,7 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training=True):
             loss = l(outputs, data)
             loss = loss[:, data.shape[1] - feats:data.shape[1]].view(-1, feats)
             return loss.detach().numpy(), y_pred.detach().numpy()
-    elif 'Transformer' in model.name:
+    elif 'Transformer' in model.name or 'TranAD' in model.name:
         l = nn.MSELoss(reduction='none')
         data_x = torch.DoubleTensor(data);
         dataset = TensorDataset(data_x, data_x)
@@ -227,16 +228,16 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training=True):
 
 
 if __name__ == '__main__':
-    train_loader, test_loader, labels = load_dataset(args.dataset)
-    if args.model in ['MERLIN']:
-        eval(f'run_{args.model.lower()}(test_loader, labels, args.dataset)')
-    model, optimizer, scheduler, epoch, accuracy_list = load_model(args.model, labels.shape[1])
 
-    ## Prepare data
-    trainD, testD = next(iter(train_loader)), next(iter(test_loader))
+    if args.dataset == 'transformer':
+        trainD, _ = generator()
+        testD, labels = generator()
+    else:
+        train_loader, test_loader, labels = load_dataset(args.dataset)
+        trainD, testD = next(iter(train_loader)), next(iter(test_loader))
+    model, optimizer, scheduler, epoch, accuracy_list = load_model(args.model, labels.shape[1])
     trainO, testO = trainD, testD
-    if model.name in ['Attention', 'DAGMM', 'USAD', 'MSCRED', 'CAE_M', 'GDN', 'MTAD_GAT',
-                      'MAD_GAN'] or 'Transformer' in model.name:
+    if model.name in ['Attention', 'DAGMM', 'MAD_GAN'] or 'Transformer' in model.name or 'TranAD' in model.name:
         trainD, testD = convert_to_windows(trainD, model), convert_to_windows(testD, model)
 
     ### Training phase
@@ -260,7 +261,7 @@ if __name__ == '__main__':
 
     ### Plot curves
     if not args.test:
-        if 'Transformer' in model.name: testO = torch.roll(testO, 1, 0)
+        if 'Transformer' in model.name or 'TranAD' in model.name: testO = torch.roll(testO, 1, 0)
         plotter(f'{args.model}_{args.dataset}', testO, y_pred, loss, labels)
 
     ### Scores
@@ -279,5 +280,3 @@ if __name__ == '__main__':
     result.update(hit_att(loss, labels))
     print(df)
     pprint(result)
-# pprint(getresults2(df, result))
-# beep(4)

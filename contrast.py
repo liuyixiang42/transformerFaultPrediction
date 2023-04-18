@@ -50,11 +50,3 @@ class Transformer(nn.Module):
 
 
 
-class Test(nn.Module):
-    def __init__(self, feats):
-        super(Test, self).__init__()
-        self.name = 'Test'
-
-
-
-
