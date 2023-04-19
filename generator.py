@@ -1,6 +1,7 @@
 import torch
 import random
 import numpy as np
+from preprocess import *
 
 DAY_SECONDS = 86400
 
@@ -30,12 +31,12 @@ def config():
         'label': {
             'point_anomal': {
                 'point_cnt': [2, 8],
-                'delta_max': 5,
+                'delta_max': 50,
                 'fluc': 2
             },
             'linear_anomal': {
                 'point_cnt': [8, 12],
-                'delta_max': 7,
+                'delta_max': 70,
                 'fluc': 2,
             },
             'square_anomal': {
@@ -73,11 +74,8 @@ def generate_normal(config, start_time):
 def generate_anomal(array_list, config_dict):
     n = len(array_list[0])
     labels = np.zeros((6, n))
-    point_args = config_dict['label']['point_anomal']
-    linear_args = config_dict['label']['linear_anomal']
-    square_args = config_dict['label']['square_anomal']
     anomal_num = 20
-    for i in range(20):
+    for i in range(anomal_num):
         a = random.randint(0, 2)
         if a == 0:
             generate_point_anomal(array_list, labels, i * 100, config_dict)
@@ -125,7 +123,7 @@ def generate_linear_anomal(array_list, labels, start_index, config_dict):
         for i in range(start_index, start_index + point_cnts):
             if i >= n:
                 break
-            labels[j][i] = 2
+            labels[j][i] = 1
 
 
 def generate_square_anomal(array_list, labels, start_index, config_dict):
@@ -153,7 +151,7 @@ def generate_square_anomal(array_list, labels, start_index, config_dict):
         for i in range(start_index, start_index + point_cnts):
             if i >= n:
                 break
-            labels[j][i] = 3
+            labels[j][i] = 1
 
 
 def generator():
@@ -164,5 +162,6 @@ def generator():
     labels = generate_anomal(array_list, config_dict)
     array_list = np.array(array_list).T
     array_list = array_list[:, 1:]
+    array_list, _, _ = normalize3(array_list)
     array_list = torch.from_numpy(array_list)
     return array_list, labels

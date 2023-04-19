@@ -261,7 +261,8 @@ if __name__ == '__main__':
 
     ### Plot curves
     if not args.test:
-        if 'Transformer' in model.name or 'TranAD' in model.name: testO = torch.roll(testO, 1, 0)
+        if 'Transformer' in model.name or 'TranAD' in model.name:
+            testO = torch.roll(testO, 1, 0)
         plotter(f'{args.model}_{args.dataset}', testO, y_pred, loss, labels)
 
     ### Scores
