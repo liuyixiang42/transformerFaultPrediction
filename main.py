@@ -9,6 +9,7 @@ import torch.nn as nn
 from time import time
 from pprint import pprint
 from generator import *
+from load_data import *
 
 
 def convert_to_windows(data, model):
@@ -232,6 +233,11 @@ if __name__ == '__main__':
     if args.dataset == 'transformer':
         trainD, _ = generator()
         testD, labels = generator()
+    elif args.dataset == 'transformer_oil_gas':
+        trainD, _ = load_fault_data()
+        trainD = np.concatenate([trainD]*100, axis=0)
+        trainD = torch.from_numpy(trainD)
+        testD, labels = load_fault_data()
     else:
         train_loader, test_loader, labels = load_dataset(args.dataset)
         trainD, testD = next(iter(train_loader)), next(iter(test_loader))
@@ -259,25 +265,46 @@ if __name__ == '__main__':
     print(f'{color.HEADER}Testing {args.model} on {args.dataset}{color.ENDC}')
     loss, y_pred = backprop(0, model, testD, testO, optimizer, scheduler, training=False)
 
-    ### Plot curves
-    if not args.test:
-        if 'Transformer' in model.name or 'TranAD' in model.name:
-            testO = torch.roll(testO, 1, 0)
-        plotter(f'{args.model}_{args.dataset}', testO, y_pred, loss, labels)
 
-    ### Scores
-    df = pd.DataFrame()
-    lossT, _ = backprop(0, model, trainD, trainO, optimizer, scheduler, training=False)
-    for i in range(loss.shape[1]):
-        lt, l, ls = lossT[:, i], loss[:, i], labels[:, i]
-        result, pred = pot_eval(lt, l, ls);
-        preds.append(pred)
-        df = df.append(result, ignore_index=True)
-    # preds = np.concatenate([i.reshape(-1, 1) + 0 for i in preds], axis=1)
-    # pd.DataFrame(preds, columns=[str(i) for i in range(10)]).to_csv('labels.csv')
-    lossTfinal, lossFinal = np.mean(lossT, axis=1), np.mean(loss, axis=1)
-    labelsFinal = (np.sum(labels, axis=1) >= 1) + 0
-    result, _ = pot_eval(lossTfinal, lossFinal, labelsFinal)
-    result.update(hit_att(loss, labels))
-    print(df)
-    pprint(result)
+
+
+    y_pred = np.sum(y_pred, axis=1, keepdims=True).reshape(300)
+    for i in range(len(y_pred)):
+        if y_pred[i] > 1:
+            y_pred[i] = 1
+        else:
+            y_pred[i] = 0
+
+    p = np.mean(labels[:, 1] == y_pred)
+    print('labels:', labels)
+    print('labels_pred:', y_pred)
+    print('Precision:', p)
+
+
+
+
+
+
+
+    # ### Plot curves
+    # if not args.test:
+    #     if 'Transformer' in model.name or 'TranAD' in model.name:
+    #         testO = torch.roll(testO, 1, 0)
+    #     plotter(f'{args.model}_{args.dataset}', testO, y_pred, loss, labels)
+    #
+    # ### Scores
+    # df = pd.DataFrame()
+    # lossT, _ = backprop(0, model, trainD, trainO, optimizer, scheduler, training=False)
+    # for i in range(loss.shape[1]):
+    #     lt, l, ls = lossT[:, i], loss[:, i], labels[:, i]
+    #     result, pred = pot_eval(lt, l, ls)
+    #     preds.append(pred)
+    #     df = df.append(result, ignore_index=True)
+    # # preds = np.concatenate([i.reshape(-1, 1) + 0 for i in preds], axis=1)
+    # # pd.DataFrame(preds, columns=[str(i) for i in range(10)]).to_csv('labels.csv')
+    # lossTfinal, lossFinal = np.mean(lossT, axis=1), np.mean(loss, axis=1)
+    # labelsFinal = (np.sum(labels, axis=1) >= 1) + 0
+    # result, _ = pot_eval(lossTfinal, lossFinal, labelsFinal)
+    # result.update(hit_att(loss, labels))
+    # print(df)
+    # pprint(result)

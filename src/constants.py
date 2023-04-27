@@ -16,6 +16,7 @@ lm_d = {
 		'MSDS': [(0.91, 1), (0.9, 1.04)],
 		'MBA': [(0.87, 1), (0.93, 1.04)],
 		'transformer': [(0.98, 1), (0.98, 1)],
+		'transformer_oil_gas': [(0.98, 1), (0.98, 1)],
 	}
 lm = lm_d[args.dataset][1]
 
@@ -32,7 +33,10 @@ lr_d = {
 		'NAB': 0.009, 
 		'MBA': 0.001,
 		'transformer': 0.001,
+		'transformer_oil_gas': 0.001,
 	}
 lr = lr_d[args.dataset]
 
 preds = []
+
+
