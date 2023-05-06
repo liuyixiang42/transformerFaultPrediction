@@ -33,7 +33,7 @@ def smooth_and_extend(seq, length):
 
 def draw_data(fault_data, length):
     new_fault_data = []
-    for i in range(6):
+    for i in range(5):
         new_data = []
         data = fault_data[i]
         for j in range(9):

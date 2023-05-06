@@ -268,7 +268,7 @@ if __name__ == '__main__':
 
 
 
-    y_pred = np.sum(y_pred, axis=1, keepdims=True).reshape(300)
+    y_pred = np.sum(y_pred, axis=1, keepdims=True).reshape(250)
     for i in range(len(y_pred)):
         if y_pred[i] > 1:
             y_pred[i] = 1
@@ -276,7 +276,7 @@ if __name__ == '__main__':
             y_pred[i] = 0
 
     p = np.mean(labels[:, 1] == y_pred)
-    print('labels:', labels)
+    print('labels:', np.sum(labels, axis=1, keepdims=True).reshape(250) / 9)
     print('labels_pred:', y_pred)
     print('Precision:', p)
 
